@@ -276,15 +276,164 @@ const STATE_MAP = {"texas":"Texas","tx":"Texas","north carolina":"North Carolina
 
 const isLegal = t => LEGAL_KW.some(k => t.toLowerCase().includes(k)); // kept for future use
 
-const STORAGE_KEY = "fn_owner_api_key";
-
-// Calls our Vercel proxy instead of Anthropic directly
-const callProxy = (apiKey, body) =>
+// Calls our Vercel proxy — API key lives server-side as env var
+const callProxy = (body) =>
   fetch("/api/proxy", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+function Chat() {
+  const [msgs, setMsgs] = useState([{
+    role: "assistant",
+    content: "Hi! I'm your Freese and Nichols People Assistant.\n\nI'm loaded with your real 2025 benefits — all three health plans with actual numbers, dental, vision, 401(k) details, FSAs, and more. I can walk you through the differences in plain English and help you figure out what's right for you.\n\nWhat can I help you with?",
+  }]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [label, setLabel] = useState("Thinking…");
+  const [err, setErr] = useState(null);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, loading]);
+
+  const send = async (text) => {
+    const q = (text || input).trim();
+    if (!q || loading) return;
+    setInput(""); setErr(null);
+    const next = [...msgs, { role: "user", content: q }];
+    setMsgs(next); setLoading(true);
+
+    try {
+      setLabel("Composing answer…");
+      const apiMsgs = next.map(m => ({ role: m.role, content: m.content }));
+
+      const res = await callProxy({
+        model: "claude-sonnet-4-20250514", max_tokens: 1500,
+        system: SYSTEM_PROMPT, messages: apiMsgs,
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setErr(`Error ${res.status}: ${d?.error?.message || JSON.stringify(d)}`);
+        setMsgs(next);
+        return;
+      }
+      const reply = d.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
+      setMsgs([...next, { role: "assistant", content: reply }]);
+    } catch (e) {
+      setErr(`Connection error: ${e.message}`);
+      setMsgs(next);
+    } finally {
+      setLoading(false); setLabel("Thinking…");
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F2EFE9", fontFamily: "'Georgia', serif", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <style>{`
+        @keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-6px);opacity:1}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        .chip:hover{background:#B8933A!important;color:#fff!important}
+        textarea:focus{outline:none}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ width: "100%", background: "#1B2F3E", padding: "13px 24px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 2px 16px rgba(0,0,0,0.18)" }}>
+        <img src="https://www.freese.com/wp-content/uploads/2020/09/logo.svg" alt="Freese and Nichols" style={{ height: 32, filter: "brightness(0) invert(1)" }} onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "block"; }} />
+        <span style={{ display: "none", color: "#F2EFE9", fontWeight: "bold", fontSize: 17 }}>Freese and Nichols</span>
+        <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.18)", margin: "0 4px" }} />
+        <div>
+          <div style={{ color: "#F2EFE9", fontSize: 14, fontWeight: "bold", letterSpacing: "0.02em" }}>People Assistant</div>
+          <div style={{ color: "#7A9E7A", fontSize: 11, fontFamily: "sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>2025 Benefits · Workday · Employment Law</div>
+        </div>
+      </div>
+
+      {/* Banner */}
+      <div style={{ width: "100%", background: "#B8933A", padding: "6px", textAlign: "center", fontSize: 11, color: "#1B2F3E", fontFamily: "sans-serif", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        ✦ Internal Concept Mockup · Not Connected to Live HR Systems ✦
+      </div>
+
+      {/* Pills */}
+      <div style={{ width: "100%", maxWidth: 760, padding: "14px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {[["🏥","Health Plans"],["🦷","Dental & Vision"],["💼","401(k) & ESOP"],["📋","Workday How-To"],["⚖","Employment Law"],["🏖","Time Off"]].map(([icon, lbl]) => (
+          <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", background: "#fff", borderRadius: 20, fontSize: 12, color: "#1B2F3E", fontFamily: "sans-serif", boxShadow: "0 1px 4px rgba(0,0,0,.08)" }}>
+            <span>{icon}</span><span style={{ fontWeight: 600 }}>{lbl}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", padding: "18px 20px 0", gap: 14, overflowY: "auto" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "fadeIn 0.3s ease forwards" }}>
+            {m.role === "assistant" && (
+              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#1B2F3E", border: "2px solid #7A9E7A", display: "flex", alignItems: "center", justifyContent: "center", marginRight: 10, flexShrink: 0, marginTop: 2, overflow: "hidden" }}>
+                <img src="https://www.freese.com/wp-content/uploads/2020/09/logo.svg" alt="" style={{ width: 20, filter: "brightness(0) invert(1)" }} onError={e => { e.target.parentNode.innerHTML = "🌿"; }} />
+              </div>
+            )}
+            <div style={{ maxWidth: "76%", padding: m.role === "user" ? "11px 16px" : "13px 17px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px", background: m.role === "user" ? "#1B2F3E" : "#FFFFFF", color: m.role === "user" ? "#F2EFE9" : "#2A2A2A", fontSize: 15, lineHeight: 1.7, whiteSpace: "pre-wrap", boxShadow: m.role === "user" ? "0 2px 12px rgba(27,47,62,.2)" : "0 2px 10px rgba(0,0,0,.07)" }}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: "flex", alignItems: "flex-start", animation: "fadeIn 0.3s ease forwards" }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#1B2F3E", border: "2px solid #7A9E7A", display: "flex", alignItems: "center", justifyContent: "center", marginRight: 10, flexShrink: 0, overflow: "hidden" }}>
+              <img src="https://www.freese.com/wp-content/uploads/2020/09/logo.svg" alt="" style={{ width: 20, filter: "brightness(0) invert(1)" }} onError={e => { e.target.parentNode.innerHTML = "🌿"; }} />
+            </div>
+            <div style={{ background: "#FFFFFF", borderRadius: "4px 18px 18px 18px", boxShadow: "0 2px 10px rgba(0,0,0,.07)" }}>
+              <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "12px 16px" }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "#7A9E7A", animation: "bounce 1.2s infinite", animationDelay: `${i * 0.2}s` }} />)}
+              </div>
+              <div style={{ fontSize: 11, color: "#999", fontFamily: "sans-serif", padding: "0 16px 10px" }}>{label}</div>
+            </div>
+          </div>
+        )}
+
+        {err && <div style={{ textAlign: "center", color: "#C0392B", fontSize: 13, fontFamily: "sans-serif", padding: "8px 0" }}>{err}</div>}
+
+        {msgs.length === 1 && (
+          <div style={{ marginTop: 4, marginBottom: 4 }}>
+            <div style={{ fontSize: 11, color: "#999", fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Try asking</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {SUGGESTED.map((q, i) => (
+                <button key={i} className="chip" onClick={() => send(q)} style={{ padding: "8px 14px", background: "transparent", border: "1.5px solid #B8933A", borderRadius: 20, color: "#1B2F3E", fontSize: 13, cursor: "pointer", fontFamily: "'Georgia', serif", transition: "all 0.2s" }}>{q}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} style={{ height: 16 }} />
+      </div>
+
+      {/* Input */}
+      <div style={{ width: "100%", maxWidth: 760, padding: "14px 20px 22px", display: "flex", gap: 10, alignItems: "flex-end" }}>
+        <div style={{ flex: 1, background: "#FFFFFF", borderRadius: 24, border: "1.5px solid #D8D3C8", display: "flex", alignItems: "center", padding: "10px 18px", boxShadow: "0 2px 10px rgba(0,0,0,.06)" }}>
+          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Ask about health plans, 401(k), dental, Workday, employment rights…"
+            rows={1} style={{ flex: 1, border: "none", outline: "none", resize: "none", fontFamily: "'Georgia', serif", fontSize: 15, color: "#2A2A2A", background: "transparent", lineHeight: 1.5, maxHeight: 100, overflowY: "auto" }}
+            onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px"; }} />
+        </div>
+        <button onClick={() => send()} disabled={!input.trim() || loading}
+          style={{ width: 46, height: 46, borderRadius: "50%", background: input.trim() && !loading ? "#1B2F3E" : "#D8D3C8", border: "none", cursor: input.trim() && !loading ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, color: "#F2EFE9", transition: "all 0.2s", flexShrink: 0, boxShadow: input.trim() && !loading ? "0 4px 14px rgba(27,47,62,.3)" : "none" }}>↑</button>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "0 0 14px", fontSize: 11, color: "#AAA", fontFamily: "sans-serif" }}>
+        Freese and Nichols People Assistant · 2025 Benefits · Concept Prototype · Legal info is general guidance only
+      </div>
+    </div>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
+export default function App() {
+  return <Chat />;
+}
+
 
 // ── Admin Panel ───────────────────────────────────────────────────────────────
 function AdminPanel({ onSave, existingKey }) {
@@ -384,10 +533,16 @@ function Chat({ apiKey, onManageKey }) {
         system: SYSTEM_PROMPT, messages: apiMsgs,
       });
       const d = await res.json();
+      if (!res.ok) {
+        const errDetail = d?.error?.message || JSON.stringify(d);
+        setErr(`API error ${res.status}: ${errDetail}`);
+        setMsgs(next);
+        return;
+      }
       const reply = d.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
-      setMsgs([...next, { role: "assistant", content: reply, legal: needsLaw }]);
-    } catch {
-      setErr("Connection error — please try again.");
+      setMsgs([...next, { role: "assistant", content: reply, legal: false }]);
+    } catch (e) {
+      setErr(`Connection error: ${e.message}`);
       setMsgs(next);
     } finally {
       setLoading(false); setLabel("Thinking…");
