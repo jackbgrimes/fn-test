@@ -274,8 +274,7 @@ const SUGGESTED = [
 const LEGAL_KW = ["law","legal","right","fmla","leave","terminat","fired","wage","salary","overtime pay","discriminat","harass","ada","title vii","cobra","minimum wage","final paycheck","layoff","severance","workers comp","protect","retaliat","wrongful"];
 const STATE_MAP = {"texas":"Texas","tx":"Texas","north carolina":"North Carolina","nc":"North Carolina","florida":"Florida","fl":"Florida","oklahoma":"Oklahoma","ok":"Oklahoma","arkansas":"Arkansas","ar":"Arkansas","california":"California","ca":"California","new york":"New York","ny":"New York","colorado":"Colorado","co":"Colorado","virginia":"Virginia","va":"Virginia"};
 
-const isLegal = t => LEGAL_KW.some(k => t.toLowerCase().includes(k));
-const getState = t => { const l = t.toLowerCase(); for (const [k,v] of Object.entries(STATE_MAP)) if (l.includes(k)) return v; return null; };
+const isLegal = t => LEGAL_KW.some(k => t.toLowerCase().includes(k)); // kept for future use
 
 const STORAGE_KEY = "fn_owner_api_key";
 
@@ -375,27 +374,10 @@ function Chat({ apiKey, onManageKey }) {
     setInput(""); setErr(null);
     const next = [...msgs, { role: "user", content: q, legal: false }];
     setMsgs(next); setLoading(true);
-    const needsLaw = isLegal(q);
-    const state = getState(q);
 
     try {
-      let legalCtx = "";
-      if (needsLaw) {
-        setLabel("Searching employment law…");
-        const sq = state ? `${state} employment law ${q.slice(0, 60)}` : `US employment law ${q.slice(0, 60)}`;
-        const sr = await callProxy(apiKey, {
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: `Search: ${sq}. Summarize current employee rights, requirements, and deadlines concisely.` }],
-        });
-        const sd = await sr.json();
-        const t = (sd.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
-        if (t) legalCtx = `\n\n== LIVE LEGAL SEARCH RESULTS ==\n${t}`;
-      }
-
       setLabel("Composing answer…");
       const apiMsgs = next.map(m => ({ role: m.role, content: m.content }));
-      if (legalCtx) apiMsgs[apiMsgs.length - 1] = { role: "user", content: q + legalCtx };
 
       const res = await callProxy(apiKey, {
         model: "claude-sonnet-4-20250514", max_tokens: 1500,
@@ -458,9 +440,7 @@ function Chat({ apiKey, onManageKey }) {
               </div>
             )}
             <div style={{ maxWidth: "76%" }}>
-              {m.role === "assistant" && m.legal && (
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#E8F0E8", color: "#3A6B3A", borderRadius: 10, fontSize: 10, fontFamily: "sans-serif", fontWeight: 700, padding: "2px 8px", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 6 }}>⚖ Live Legal Search</div>
-              )}
+
               <div style={{ padding: m.role === "user" ? "11px 16px" : "13px 17px", borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px", background: m.role === "user" ? "#1B2F3E" : "#FFFFFF", color: m.role === "user" ? "#F2EFE9" : "#2A2A2A", fontSize: 15, lineHeight: 1.7, whiteSpace: "pre-wrap", boxShadow: m.role === "user" ? "0 2px 12px rgba(27,47,62,.2)" : "0 2px 10px rgba(0,0,0,.07)" }}>
                 {m.content}
               </div>
